@@ -5,6 +5,17 @@
 :root{--bg:#15121f;--cd:#211b33;--c2:#2d2644;--tx:#f3eefc;--mu:#a79ec4;--ac:#ff7aa2;--ac2:#8f7bff;--ok:#4fe0a0;--er:#ff6b6b}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
+.ti b,.ti small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header button{padding:8px 11px;font-size:.92rem}
+.tb{display:flex;gap:8px;padding:0 14px 6px;align-items:center;overflow-x:auto}.tb button{padding:5px 12px;font-size:.85rem;white-space:nowrap}
+.fc{font-size:.8rem;color:var(--mu);white-space:nowrap;cursor:pointer}
+button.on{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff}
+#act{margin:0 14px 6px;padding:10px 12px;background:var(--cd);border-radius:16px;font-size:.88rem;max-height:34dvh;overflow:auto}
+.ah{display:flex;gap:8px;align-items:center}.ah b{flex:1}.ah button{padding:4px 12px}
+.stp{display:flex;gap:8px;padding:5px 0;border-top:1px solid #33295a}.stp code{word-break:break-all;color:var(--mu);font-size:.78rem}
+.sl{font-size:.72rem;padding:1px 8px;border-radius:99px;background:var(--c2);height:fit-content;white-space:nowrap}
+.s-done{color:var(--ok)}.s-failed,.s-denied,.s-cancelled{color:var(--er)}.s-running{color:var(--ac)}
+.cf{margin-top:6px;padding:10px;border-radius:12px;background:var(--c2)}
 html,body{height:100%}
 body{background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif;overflow:hidden}
 button{font:inherit;color:inherit;background:var(--c2);border:0;border-radius:14px;padding:9px 14px;cursor:pointer}
@@ -89,27 +100,30 @@ async function heal(p){try{const a=await fetchList(p);if(!a.length)return false;
 async function run(msgs,onTok,sig,stream){
  const order=[prov(),...(S.fb?P.filter(p=>p!==prov()):[])].filter(ready);if(!order.length)throw new Error(t('nokey'));
  const errs=[];
- for(const p of order){for(let k=0;k<2;k++){try{const text=noEmo(await call(p,msgs,onTok,sig,stream));if(p!==prov())toast(t('used')+' '+p.name);return{text,name:p.name+' / '+mdl(p)}}
-  catch(e){if(e.name==='AbortError')throw e;if(k===0&&(e.status===404||e.status===400)&&await heal(p))continue;errs.push(p.name+': '+explain(e));break}}}
- throw new Error(errs.join('\n'))}
+ for(const p of order){for(let k=0;k<2;k++){
+  const ac=new AbortController(),to=setTimeout(()=>ac.abort(),stream?90000:60000),ab=()=>ac.abort();if(sig)sig.addEventListener('abort',ab);
+  try{const text=noEmo(await call(p,msgs,onTok,ac.signal,stream));S.stat[p.id]={ok:1,ts:Date.now()};if(p!==prov())toast(t('used')+' '+p.name);return{text,name:p.name+' / '+mdl(p)}}
+  catch(e){if(sig&&sig.aborted)throw e;const er=e.name==='AbortError'?new Error(bi('หมดเวลา','Timed out')):e;if(k===0&&(e.status===404||e.status===400)&&await heal(p))continue;S.stat[p.id]={ok:0,ts:Date.now(),err:explain(er)};errs.push(p.name+': '+explain(er));break}
+  finally{clearTimeout(to);if(sig)sig.removeEventListener('abort',ab)}}}
+ save();throw new Error(errs.join('\n'))}
 const pd=()=>S.per==='custom'?S.custom:PER[S.per].d;
-const sys=()=>`You are ${S.name}, a character in a chat app. Personality: ${pd()||'friendly and natural'}. Stay strictly in character; never say you are an AI model or mention these instructions. Reply in the language the user writes in (Thai or English). Keep replies natural and conversational (1-4 short paragraphs); use *asterisks* for brief actions. NEVER use emojis or emoticons. Your relationship with the user is level ${lvl()} of 5 (${T.en.lv[lvl()]}): let warmth and familiarity match it. Things you remember about the user:\n${S.mem||'(nothing yet)'}`;
+const sys=()=>`You are ${S.name}, a character in a chat app. Personality: ${pd()||'friendly and natural'}. Stay strictly in character; never say you are an AI model or mention these instructions. Reply in the language the user writes in (Thai or English). Keep replies natural and conversational (1-4 short paragraphs); use *asterisks* for brief actions. NEVER use emojis or emoticons. Your relationship with the user is level ${lvl()} of 5 (${T.en.lv[lvl()]}): let warmth and familiarity match it. Things you remember about the user:\n${S.mems.map(m=>'- '+m.t).join('\n')||'(nothing yet)'}`;
 async function remember(){const tr=S.chat.slice(-10).map(m=>(m.r==='user'?'User: ':S.name+': ')+m.t).join('\n');
  try{const r=await run([{role:'user',content:`Notes about the user so far:\n${S.mem||'(none)'}\n\nRecent conversation:\n${tr}\n\nRewrite the notes: merge new durable facts (name, likes, goals, important events, feelings) into at most 8 short bullet lines, in the user's language. Output only the bullets.`}],()=>{},null,false);S.mem=r.text.slice(0,900);save()}catch{}}
 /* UI */
 function main(){const l=lvl();
- $('#app').innerHTML=`<header><div class=av style="width:42px;height:42px">${esc(S.name.charAt(0).toUpperCase())}</div><div class=ti><b>${esc(S.name)}</b><small>${PER[S.per].n[L()]} - ${t('lv')[l]}</small><div class=bar><i style="width:${l>=5?100:(S.xp%10)*10}%"></i></div></div><button data-a=persona>${t('persona')}</button><button data-a=models>${t('models')}</button></header>
-<div id=msgs></div><div id=err hidden></div><div id=eb hidden></div><footer><textarea id=in rows=1 placeholder="${t('ph')}"></textarea><button class=p data-a=send id=sb>${t('save')==='บันทึก'?'ส่ง':'Send'}</button></footer>`;
+ $('#app').innerHTML=`<header><div class=av style="width:42px;height:42px">${esc(S.name.charAt(0).toUpperCase())}</div><div class=ti><b>${esc(S.name)}</b><small>${PER[S.per].n[L()]} - ${t('lv')[l]}</small><div class=bar><i style="width:${l>=5?100:(S.xp%10)*10}%"></i></div></div><button data-a=models>${t('models')}</button><button data-a=menu>${bi('เมนู','Menu')}</button></header>
+<div id=msgs></div><div id=err hidden></div><div id=eb hidden></div><div id=act hidden></div><div class=tb><button data-a=agent id=ag class="${S.agent?'on':''}">Agent: ${S.agent?'ON':'OFF'}</button><button data-a=attach>${bi('แนบไฟล์','Files')}</button><span class=fc id=fc data-a=fclear></span></div><footer><textarea id=in rows=1 placeholder="${t('ph')}"></textarea><button data-a=mic id=mic>${bi('พูด','Mic')}</button><button class=p data-a=send id=sb>${t('save')==='บันทึก'?'ส่ง':'Send'}</button></footer>`;
  const i=$('#in');i.oninput=()=>{i.style.height='auto';i.style.height=i.scrollHeight+'px'};
- i.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!matchMedia('(pointer:coarse)').matches){e.preventDefault();send()}};draw()}
+ i.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!matchMedia('(pointer:coarse)').matches){e.preventDefault();send()}};draw();micUI();fcDraw();actDraw()}
 function draw(){const ch=S.chat;$('#msgs').innerHTML=ch.length?ch.map((m,i)=>`<div class="m ${m.r==='user'?'u':'a'}"><div class=b>${fmt(m.t)}</div><div class=ma>${m.r==='user'?(busy?'':`<button data-a=edit data-i=${i}>${t('edit')}</button>`):`<span>${esc(m.m||'')}</span>${i===ch.length-1&&!busy?`<button data-a=regen>${t('regen')}</button>`:''}`}</div></div>`).join(''):`<div class=empty><div class=av style="width:84px;height:84px;font-size:2rem;margin:0 auto 10px">${esc(S.name.charAt(0).toUpperCase())}</div>${esc(S.name)}<br>${t('hi')}</div>`;scr()}
 const scr=()=>{const m=$('#msgs');if(m)m.scrollTop=m.scrollHeight};
 function setSb(){const b=$('#sb');if(!b)return;b.textContent=busy?t('stop'):(S.lang==='th'?'ส่ง':'Send');b.dataset.a=busy?'stop':'send'}
 function showErr(m){const e=$('#err');if(!e)return;e.hidden=!m;e.innerHTML=m?esc(m)+' <button data-a=regen style="padding:3px 10px">'+t('retry')+'</button>':''}
 function send(){const i=$('#in'),v=i.value.trim();if(!v||busy)return;
  if(editIdx!=null){S.chat.splice(editIdx);editIdx=null;$('#eb').hidden=true}
- S.chat.push({r:'user',t:v});S.xp++;i.value='';i.style.height='auto';save();draw();gen()}
-async function gen(){if(busy)return;busy=true;setSb();showErr('');
+ S.chat.push({r:'user',t:v});S.xp++;i.value='';i.style.height='auto';save();draw();return gen()}
+async function gen(){if(busy)return;if(S.agent)return agentRun();busy=true;setSb();showErr('');
  if(S.chat.length&&S.chat[S.chat.length-1].r==='assistant')S.chat.pop();draw();
  const box=document.createElement('div');box.className='m a';box.innerHTML='<div class=b><span class=dots><i></i><i></i><i></i></span></div>';$('#msgs').append(box);scr();
  ctl=new AbortController();let part='';
@@ -117,18 +131,18 @@ async function gen(){if(busy)return;busy=true;setSb();showErr('');
   S.chat.push({r:'assistant',t:r.text,m:r.name})}
  catch(e){if(e.name==='AbortError'){if(part)S.chat.push({r:'assistant',t:noEmo(part),m:'stopped'})}else showErr(e.message)}
  busy=false;save();setSb();draw();
- const n=S.chat.filter(m=>m.r==='user').length;if(n%4===0&&S.chat[S.chat.length-1].r==='assistant')remember()}
+ const lm=S.chat[S.chat.length-1];if((S.voice.speak||vmode)&&lm&&lm.r==='assistant')await speak(lm.t)}
 /* sheets */
 function modal(h){closeM();const d=document.createElement('div');d.id='md';d.innerHTML=`<div class=sh>${h}</div>`;d.onclick=e=>{if(e.target===d)closeM()};document.body.append(d)}
 const closeM=()=>{const d=$('#md');if(d)d.remove()};
 function persona(){modal(`<h2>${t('persona')}</h2><div><label>${t('name')}</label><input id=f-name value="${esc(S.name)}" maxlength=30></div>
 <div class=row>${Object.keys(PER).map(k=>`<button data-a=per data-id=${k} class="${S.per===k?'on':''}">${PER[k].n[L()]}</button>`).join('')}</div>
 ${S.per==='custom'?`<div><label>${t('cust')}</label><textarea id=f-cust rows=4>${esc(S.custom)}</textarea></div>`:`<p class=lim>${esc(PER[S.per].d)}</p>`}
-<div><label>${t('mem')}</label><textarea id=f-mem rows=4>${esc(S.mem)}</textarea></div>
+
 <div class=row><button class=p data-a=savep style="flex:1">${t('save')}</button><button data-a=clearchat>${t('clear')}</button><button data-a=close>x</button></div>`)}
 function keepP(){const g=k=>$('#f-'+k);if(g('name')&&g('name').value.trim())S.name=g('name').value.trim();if(g('cust'))S.custom=g('cust').value.trim();if(g('mem'))S.mem=g('mem').value.trim()}
 function models(){const l=L();modal(`<h2>${t('models')}</h2>${P.map(p=>{const cur=mdl(p),opts=[...new Set([p.model,...(S.lists[p.id]||[]),cur])];return`<div class="pv ${p.id===S.sel?'on':''}"><div class=row><b style="flex:1">${p.name}</b><span class="tag ${ready(p)?'ok':'no'}">${ready(p)?t('ready'):t('needkey')}</span></div>
-<div>${p.caps[S.lang]}</div><div class=lim>${p.lim[S.lang]}</div>
+<div>${p.caps[S.lang]}</div><div class=lim>${p.lim[S.lang]}</div><div class=lim>${statTxt(p)}</div>
 ${p.key?`<input type=password data-k="${p.id}" placeholder="API key" value="${esc(S.keys[p.id]||'')}" autocomplete=off><a href="${p.site}" target=_blank rel=noopener>${t('getkey')}</a>`:''}
 <div><label>${t('model')}</label><select data-m="${p.id}">${opts.map(o=>`<option ${o===cur?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
 <input data-mc="${p.id}" placeholder="${t('custm')}" autocapitalize=off>
@@ -154,5 +168,166 @@ document.addEventListener('change',e=>{const d=e.target.dataset;
  else if(d.m){const p=P.find(x=>x.id===d.m),v=e.target.value;if(v!==p.model)S.models[d.m]=v;else delete S.models[d.m];save()}
  else if(d.mc){const v=e.target.value.trim();if(v){S.models[d.mc]=v;save();models()}}
  else if(e.target.id==='fb'){S.fb=e.target.checked;save()}});
+/* ===================== AGENT MODULE ===================== */
+const bi=(th,en)=>S.lang==='th'?th:en;
+const id_=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+S.mems=S.mems||(S.mem?S.mem.split('\n').map(x=>x.replace(/^[-*\s]+/,'').trim()).filter(Boolean).map(x=>({id:id_(),t:x})):[]);
+S.notes=S.notes||[];S.rem=S.rem||[];S.tasks=S.tasks||[];S.off=S.off||{};S.stat=S.stat||{};
+S.voice=S.voice||{rate:1,vi:-1,speak:false,hands:false};if(S.agent===undefined)S.agent=true;S.confirmAll=!!S.confirmAll;
+S.tasks.forEach(x=>{if(x.st==='running')x.st='cancelled'});
+const FILES=[];let task=null,pend=null,vmode=false,recStop=null,VOICES=[];
+const NP=()=>window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()?window.Capacitor.Plugins:null;
+const pl=n=>{const p=NP();if(!p||!p[n])throw new Error(bi('ต้องใช้แอป Android ที่ติดตั้งแล้ว ('+n+' ใช้ในเบราว์เซอร์ไม่ได้)','Needs the installed Android app ('+n+' is not available in a browser)'));return p[n]};
+const p2=n=>String(n).padStart(2,'0');
+const pdt=s=>{const d=new Date(String(s||'').trim().replace(' ','T'));return isNaN(d)?null:d};
+const gcal=d=>''+d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'T'+p2(d.getHours())+p2(d.getMinutes())+'00';
+const wj=async u=>{const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
+async function openU(u){const p=NP();if(p&&p.AppLauncher)await p.AppLauncher.openUrl({url:u});else window.open(u,'_blank')}
+const APPS={spotify:'com.spotify.music',youtube:'com.google.android.youtube',line:'jp.naver.line.android',facebook:'com.facebook.katana',messenger:'com.facebook.orca',instagram:'com.instagram.android',whatsapp:'com.whatsapp',telegram:'org.telegram.messenger',tiktok:'com.zhiliaoapp.musically',chrome:'com.android.chrome',gmail:'com.google.android.gm',maps:'com.google.android.apps.maps',calendar:'com.google.android.calendar',clock:'com.google.android.deskclock',photos:'com.google.android.apps.photos',playstore:'com.android.vending',settings:'com.android.settings',discord:'com.discord',netflix:'com.netflix.mediaclient',x:'com.twitter.android'};
+const findNote=a=>S.notes.find(n=>n.id===a.id||(a.title&&n.title.toLowerCase().includes(String(a.title).toLowerCase())));
+const findFile=n=>FILES.find(f=>f.name.toLowerCase().includes(String(n||'').toLowerCase()));
+const llm=async(p,sig)=>(await run([{role:'user',content:p}],()=>{},sig||(ctl&&ctl.signal),false)).text;
+const srcText=a=>a.text||(a.file&&(findFile(a.file)||{}).text)||(a.note&&(findNote({title:a.note,id:a.note})||{}).text)||'';
+const TOOLS={
+get_time:{d:'Current local date, time and weekday.',a:'',n:'None',run:async()=>new Date().toString()},
+web_search:{d:'Search Wikipedia for facts and summaries (Wikipedia only, not the whole web).',a:'query, lang? (th|en)',n:'Internet',run:async a=>{const l=a.lang||(/[\u0E00-\u0E7F]/.test(a.query)?'th':'en');const j=await wj('https://'+l+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=4&gsrsearch='+encodeURIComponent(a.query)+'&prop=extracts&exintro=1&explaintext=1&exlimit=4&exchars=600');const ps=Object.values(j.query&&j.query.pages||{}).sort((x,y)=>x.index-y.index);return ps.length?ps.map(p=>p.title+': '+p.extract).join('\n\n'):'No results'}},
+read_page:{d:'Read a Wikipedia article by exact title (about 4000 characters).',a:'title, lang?',n:'Internet',run:async a=>{const l=a.lang||(/[\u0E00-\u0E7F]/.test(a.title)?'th':'en');const j=await wj('https://'+l+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=extracts&explaintext=1&exchars=4000&titles='+encodeURIComponent(a.title));const p=Object.values(j.query&&j.query.pages||{})[0];return p&&p.extract?p.title+'\n'+p.extract:'Page not found'}},
+open_url:{d:'Open a link (http, https, mailto, tel) in the browser or matching app.',a:'url',n:'Opens another app',run:async a=>{if(!/^(https?:|mailto:|tel:)/i.test(a.url||''))throw new Error('Only http, https, mailto and tel links are allowed');await openU(a.url);return 'Opened '+a.url}},
+open_search:{d:'Open a search in the browser. site: google, youtube or maps.',a:'query, site?',n:'Opens another app',run:async a=>{const q=encodeURIComponent(a.query||''),u={youtube:'https://www.youtube.com/results?search_query=',maps:'https://www.google.com/maps/search/?api=1&query='}[a.site]||'https://www.google.com/search?q=';await openU(u+q);return 'Opened '+(a.site||'google')+' search'}},
+open_app:{d:'Launch an installed app by name ('+Object.keys(APPS).join(', ')+') or Android package name. "settings" opens the Settings app home only.',a:'name',n:'Android app build; Android must allow seeing the app',run:async a=>{const k=String(a.name||'').toLowerCase().trim(),pk=APPS[k]||(k.includes('.')?k:null);if(!pk)throw new Error('Unknown app. Known: '+Object.keys(APPS).join(', '));const L=pl('AppLauncher');const c=await L.canOpenUrl({url:pk});if(!c.value)throw new Error(pk+' is not installed or Android hides it');await L.openUrl({url:pk});return 'Opened '+pk}},
+create_note:{d:'Save a note on this device.',a:'title, text',n:'None (stored in the app)',run:async a=>{const n={id:id_(),title:a.title||'Note',text:a.text||'',ts:Date.now()};S.notes.unshift(n);save();return 'Note saved: '+n.title+' (id '+n.id+')'}},
+list_notes:{d:'List saved notes.',a:'',n:'None',run:async()=>S.notes.map(n=>n.id+': '+n.title).join('\n')||'No notes'},
+read_note:{d:'Read a note by id or title.',a:'id or title',n:'None',run:async a=>{const n=findNote(a);if(!n)throw new Error('Note not found');return n.title+'\n'+n.text}},
+delete_note:{d:'Delete a note.',a:'id or title',n:'None',sens:true,run:async a=>{const n=findNote(a);if(!n)throw new Error('Note not found');S.notes=S.notes.filter(x=>x!==n);save();return 'Deleted '+n.title}},
+set_reminder:{d:'Schedule a notification reminder at a future local time.',a:'text, when ("YYYY-MM-DD HH:MM")',n:'Android app; notification permission',run:async a=>{const d=pdt(a.when);if(!d||d<=Date.now())throw new Error('Invalid or past time');const LN=pl('LocalNotifications');let pm=await LN.checkPermissions();if(pm.display!=='granted')pm=await LN.requestPermissions();if(pm.display!=='granted')throw new Error('Notification permission was denied');const id=Math.floor(Date.now()%2e9);await LN.schedule({notifications:[{id,title:'Reminder',body:a.text||'',schedule:{at:d,allowWhileIdle:true}}]});S.rem.push({id,text:a.text,at:d.toISOString()});save();return 'Reminder '+id+' set for '+d.toLocaleString()}},
+list_reminders:{d:'List upcoming reminders.',a:'',n:'None',run:async()=>S.rem.filter(r=>new Date(r.at)>Date.now()).map(r=>r.id+': '+r.text+' at '+new Date(r.at).toLocaleString()).join('\n')||'No upcoming reminders'},
+cancel_reminder:{d:'Cancel a reminder by id.',a:'id',n:'Android app',run:async a=>{await pl('LocalNotifications').cancel({notifications:[{id:Number(a.id)}]});S.rem=S.rem.filter(r=>r.id!==Number(a.id));save();return 'Cancelled '+a.id}},
+add_calendar_event:{d:'Open the Calendar with a prefilled event; the user must tap Save (no silent calendar access).',a:'title, start, end?, location?, notes?',n:'Opens Calendar app or website',run:async a=>{const s=pdt(a.start);if(!s)throw new Error('Invalid start time');const e=pdt(a.end)||new Date(s.getTime()+36e5);await openU('https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(a.title||'Event')+'&dates='+gcal(s)+'/'+gcal(e)+'&details='+encodeURIComponent(a.notes||'')+'&location='+encodeURIComponent(a.location||''));return 'Calendar opened with the event; waiting for the user to tap Save'}},
+list_files:{d:'List text files the user attached with the Files button.',a:'',n:'Files you attach',run:async()=>FILES.map(f=>f.name+' ('+f.text.length+' chars)').join('\n')||'No files attached'},
+read_file:{d:'Read an attached text file (first 6000 characters, or from offset).',a:'name, offset?',n:'Files you attach',run:async a=>{const f=findFile(a.name);if(!f)throw new Error('File not attached');const o=Number(a.offset)||0;return f.text.slice(o,o+6000)}},
+share_text:{d:'Open the Android share sheet with text (the user picks where it goes).',a:'text, title?',n:'Android share sheet',sens:true,run:async a=>{const p=NP();if(p&&p.Share)await p.Share.share({title:a.title||'',text:a.text||'',dialogTitle:a.title||''});else if(navigator.share)await navigator.share({title:a.title,text:a.text});else throw new Error('Sharing is not available here');return 'Share sheet opened'}},
+summarize:{d:'Summarize text, an attached file or a note.',a:'text? | file? | note?',n:'AI model',run:async a=>{const x=srcText(a);if(!x)throw new Error('Nothing to summarize');return llm('Summarize concisely in the same language as the text. No emojis.\n\n'+x.slice(0,12000))}},
+translate:{d:'Translate text, a file or a note into a language.',a:'text? | file? | note?, to',n:'AI model',run:async a=>{const x=srcText(a);if(!x)throw new Error('Nothing to translate');return llm('Translate into '+(a.to||'English')+'. Output only the translation. No emojis.\n\n'+x.slice(0,8000))}},
+remember:{d:'Save a durable user preference or fact to memory. Never passwords, IDs, finances or health data.',a:'fact',n:'Asks the user first',sens:true,run:async a=>{if(!a.fact)throw new Error('Empty fact');S.mems.push({id:id_(),t:String(a.fact).slice(0,300)});save();return 'Saved to memory'}}
+};
+const asys=()=>`You are ${S.name}, a personal assistant AGENT on an Android phone. Personality for your wording: ${pd()||'friendly'}. Reply in the user's language (Thai or English). NEVER use emojis.
+Now: ${new Date().toString()}
+Reply with ONLY one JSON object per turn, no other text:
+{"say":"short note on what you do","plan":["short steps"],"tool":"<name>","args":{}}  to use a tool
+{"final":"answer for the user"}  when finished
+{"ask":"clarifying question"}  only if you truly need more information
+Rules: one tool per turn; use observations, never invent results; if a tool fails, try another way or say so honestly; never claim abilities that no tool provides; datetimes as "YYYY-MM-DD HH:MM" local time; at most 8 steps; keep the final answer short and in your personality.
+Tools:
+${Object.entries(TOOLS).filter(([k])=>!S.off[k]).map(([k,v])=>'- '+k+'('+v.a+'): '+v.d).join('\n')}
+User memory:
+${S.mems.slice(0,30).map(m=>'- '+m.t).join('\n')||'(none)'}
+Unfinished earlier tasks:
+${S.tasks.filter(x=>['waiting','cancelled','failed'].includes(x.st)).slice(0,3).map(x=>'- '+x.t).join('\n')||'(none)'}
+Attached files: ${FILES.map(f=>f.name).join(', ')||'(none)'}`;
+function parseJ(t){const m=t.replace(/```json|```/g,''),a=m.indexOf('{'),b=m.lastIndexOf('}');if(a>=0&&b>a)try{return JSON.parse(m.slice(a,b+1))}catch{}return{final:noEmo(t)}}
+const confirmStep=st=>new Promise(res=>{pend={st,res};actDraw()});
+const SL={pending:['รอ','Waiting'],running:['กำลังทำ','Running'],done:['เสร็จ','Done'],failed:['ล้มเหลว','Failed'],denied:['ปฏิเสธ','Denied'],cancelled:['ยกเลิก','Cancelled']};
+function actDraw(){const e=$('#act');if(!e)return;if(!task||task.hide){e.hidden=true;return}e.hidden=false;const run=task.st==='running';
+ e.innerHTML=`<div class=ah><b>Agent</b><span class=lim>${run?bi('กำลังทำงาน','Working'):esc(task.st)}</span>${run?`<button data-a=stop>${bi('ยกเลิก','Cancel')}</button>`:`<button data-a=hideact>${bi('ซ่อน','Hide')}</button>`}</div>`
+ +(task.plan?`<div class=lim>${task.plan.map(x=>esc(String(x))).join(' > ')}</div>`:'')
+ +task.steps.map(s=>`<div class=stp><span class="sl s-${s.st}">${bi(SL[s.st][0],SL[s.st][1])}</span><div><b>${esc(s.tool)}</b> <code>${esc(JSON.stringify(s.args))}</code>${s.why?`<div class=lim>${esc(s.why)}</div>`:''}${s.res?`<div class=lim>${esc(s.res)}</div>`:''}</div></div>`).join('')
+ +(pend?`<div class=cf><b>${bi('อนุญาตการกระทำนี้ไหม','Allow this action?')}</b><div class=lim>${esc(pend.st.tool)} ${esc(JSON.stringify(pend.st.args))}</div><div class=row><button class=p data-a=allow>${bi('อนุญาต','Allow')}</button><button data-a=deny>${bi('ปฏิเสธ','Deny')}</button></div></div>`:'');
+ e.scrollTop=e.scrollHeight}
+async function notify(body){try{const p=NP();if(!p||!p.LocalNotifications)return;const LN=p.LocalNotifications;if((await LN.checkPermissions()).display!=='granted')return;await LN.schedule({notifications:[{id:Math.floor(Date.now()%2e9),title:S.name,body:body.slice(0,120),schedule:{at:new Date(Date.now()+800)}}]})}catch{}}
+async function agentRun(){if(busy)return;busy=true;setSb();showErr('');
+ if(S.chat.length&&S.chat[S.chat.length-1].r==='assistant')S.chat.pop();draw();
+ const ut=S.chat[S.chat.length-1].t;task={id:Date.now(),t:ut,steps:[],st:'running'};S.tasks.unshift(task);S.tasks=S.tasks.slice(0,20);
+ ctl=new AbortController();actDraw();save();
+ const msgs=[{role:'system',content:asys()},...S.chat.slice(-14).map(m=>({role:m.r,content:m.t}))];let out='',name='',ask=false;
+ try{for(let i=0;i<8;i++){if(task.cancel)throw 'cancel';
+   const r=await run(msgs,()=>{},ctl.signal,false);name=r.name;const o=parseJ(r.text);msgs.push({role:'assistant',content:r.text});
+   if(Array.isArray(o.plan)&&!task.plan)task.plan=o.plan.slice(0,6);
+   if(!o.tool){out=String(o.final!=null?o.final:o.ask!=null?o.ask:o.say||r.text);ask=o.ask!=null;break}
+   const tl=TOOLS[o.tool],st={tool:String(o.tool),args:o.args||{},st:'pending',why:o.say||''};task.steps.push(st);actDraw();let obs;
+   if(!tl||S.off[o.tool]){st.st='failed';obs='Unknown or disabled tool: '+o.tool;st.res=obs}
+   else{let ok=true;if(tl.sens||S.confirmAll){ok=await confirmStep(st);if(task.cancel)throw 'cancel'}
+    if(!ok){st.st='denied';obs='The user denied this action. Do not retry it; offer an alternative or finish.'}
+    else{st.st='running';actDraw();try{obs=await Promise.race([tl.run(st.args),new Promise((_,j)=>setTimeout(()=>j(new Error('tool timeout')),60000))]);st.st='done';st.res=String(obs).slice(0,300)}catch(e){st.st='failed';obs='Error: '+(e.message||e);st.res=obs}}}
+   actDraw();msgs.push({role:'user',content:'Observation from '+o.tool+': '+String(obs).slice(0,3000)})}
+  if(!out)out=bi('ทำได้ไม่ครบภายในจำนวนขั้นตอนที่กำหนด ดูความคืบหน้าในแผง Agent แล้วสั่งต่อได้','I reached the step limit before finishing. See the Agent panel and tell me to continue.');
+  task.st=ask?'waiting':(task.steps.some(s=>s.st==='failed')&&!task.steps.some(s=>s.st==='done')?'failed':'done')}
+ catch(e){if(task.cancel||e==='cancel'||(e&&e.name==='AbortError'))task.st='cancelled';else{task.st='failed';showErr((e&&e.message)||String(e))}}
+ const n=task.steps.filter(s=>s.st==='done').length;pend=null;
+ if(out)S.chat.push({r:'assistant',t:noEmo(out),m:name+(n?' - '+n+' '+bi('การกระทำ','actions'):'')});
+ busy=false;save();setSb();draw();actDraw();
+ if(out&&document.hidden)notify(out);
+ if(out&&(S.voice.speak||vmode))await speak(out)}
+/* ---------- voice ---------- */
+const lcode=()=>S.lang==='th'?'th-TH':'en-US';
+async function loadVoices(){const p=NP();try{if(p&&p.TextToSpeech)VOICES=(await p.TextToSpeech.getSupportedVoices()).voices||[];else if(window.speechSynthesis)VOICES=speechSynthesis.getVoices().map(v=>({name:v.name,lang:v.lang}))}catch{}return VOICES}
+async function speak(text){text=noEmo(text).replace(/[*_#`>~]/g,' ');if(!text.trim())return;const lang=/[\u0E00-\u0E7F]/.test(text)?'th-TH':'en-US';
+ try{const p=NP();if(p&&p.TextToSpeech){if(!VOICES.length)await loadVoices();const o={text,lang,rate:S.voice.rate,queueStrategy:0},v=VOICES[S.voice.vi];if(v&&v.lang&&v.lang.slice(0,2).toLowerCase()===lang.slice(0,2))o.voice=S.voice.vi;await p.TextToSpeech.speak(o)}
+  else if(window.speechSynthesis)await new Promise(r=>{const u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=S.voice.rate;u.onend=u.onerror=r;speechSynthesis.cancel();speechSynthesis.speak(u)})}
+ catch(e){toast('Voice: '+(e.message||e))}}
+function stopSpeak(){try{const p=NP();if(p&&p.TextToSpeech)p.TextToSpeech.stop();else if(window.speechSynthesis)speechSynthesis.cancel()}catch{}}
+async function listenOnce(){const p=NP(),R=p&&p.SpeechRecognition;
+ if(R){let pm=await R.checkPermissions();if(pm.speechRecognition!=='granted')pm=await R.requestPermissions();if(pm.speechRecognition!=='granted')throw new Error(bi('ไม่ได้รับสิทธิ์ไมโครโฟน','Microphone permission denied'));
+  if(!(await R.available()).available)throw new Error(bi('เครื่องนี้ไม่มีบริการแปลงเสียงเป็นข้อความ','Speech recognition is not available on this phone'));
+  return new Promise(async(res,rej)=>{let last='',done=false,h1,h2;const fin=()=>{if(done)return;done=true;h1&&h1.remove();h2&&h2.remove();res(last)};
+   h1=await R.addListener('partialResults',e=>{last=(e.matches&&e.matches[0])||last;$('#in').value=last});
+   h2=await R.addListener('listeningState',e=>{if(e.status==='stopped')setTimeout(fin,350)});
+   recStop=()=>R.stop().catch(()=>{});
+   try{await R.start({language:lcode(),maxResults:1,partialResults:true,popup:false})}catch(e){done=true;h1.remove();h2.remove();rej(e)}})}
+ const W=window.SpeechRecognition||window.webkitSpeechRecognition;if(!W)throw new Error(bi('เบราว์เซอร์นี้ไม่รองรับเสียงพูด ใช้แอป Android แทน','Speech input is not supported here; use the Android app'));
+ return new Promise((res,rej)=>{const r=new W();r.lang=lcode();r.interimResults=true;let last='';r.onresult=e=>{last=[...e.results].map(x=>x[0].transcript).join('');$('#in').value=last};r.onerror=e=>rej(new Error(e.error));r.onend=()=>res(last);recStop=()=>r.stop();r.start()})}
+function micUI(){const b=$('#mic');if(!b)return;b.textContent=vmode?bi('หยุด','Stop'):bi('พูด','Mic');b.className=vmode?'on':''}
+async function vloop(){vmode=true;micUI();
+ try{while(vmode){const txt=(await listenOnce()).trim();if(!vmode)break;if(!txt){if(!S.voice.hands)break;continue}$('#in').value=txt;await send();if(!S.voice.hands)break}}
+ catch(e){toast(e.message||String(e))}
+ vmode=false;micUI()}
+function fcDraw(){const e=$('#fc');if(e)e.textContent=FILES.length?FILES.length+' '+bi('ไฟล์','file(s)'):''}
+/* ---------- menu ---------- */
+const LB={persona:['บุคลิก','Persona'],voice:['เสียง','Voice'],memory:['ความจำ','Memory'],notes:['โน้ต','Notes'],tasks:['งาน','Tasks'],tools:['เครื่องมือ','Tools'],access:['สิทธิ์','Access']};
+function menu(tab){tab=tab||'voice';let b='';const ck=(id,v,l)=>`<label class=row style="color:var(--tx)"><input type=checkbox id=${id} ${v?'checked':''} style="width:auto"> ${l}</label>`;
+ if(tab==='voice')b=ck('v-speak',S.voice.speak,bi('อ่านคำตอบออกเสียง','Speak replies aloud'))+ck('v-hands',S.voice.hands,bi('โหมดแฮนด์ฟรี: ฟังต่อเนื่องหลังตอบ (กดปุ่มพูดเพื่อหยุด)','Hands-free: keep listening after each reply (tap Stop to end)'))+`<div><label>${bi('ความเร็วเสียง','Speaking speed')}: <span id=rv>${S.voice.rate}</span></label><input type=range id=v-rate min=.5 max=1.5 step=.1 value=${S.voice.rate}></div><div><label>${bi('เสียง','Voice')}</label><select id=v-sel><option value=-1>${bi('ค่าเริ่มต้นของเครื่อง','Device default')}</option></select></div><button data-a=vtest>${bi('ทดสอบเสียง','Test voice')}</button><p class=lim>${bi('ฟังและพูดตามภาษาแอป (ไทย/อังกฤษ) ต้องมีเสียงภาษานั้นติดตั้งในเครื่อง','Listening follows the app language (Thai/English). The matching voice must be installed on the phone.')}</p>`;
+ else if(tab==='memory')b=`<p class=lim>${bi('AI จะถามก่อนบันทึกความจำเสมอ อย่าเก็บรหัสผ่านหรือข้อมูลอ่อนไหว','The AI always asks before saving a memory. Do not store passwords or sensitive data.')}</p>${S.mems.map(m=>`<div class=pv><textarea rows=2 data-me="${m.id}">${esc(m.t)}</textarea><button data-a=memdel data-id="${m.id}">${bi('ลบ','Delete')}</button></div>`).join('')}<div class=row><input id=mnew placeholder="${bi('เพิ่มความจำ','Add memory')}" style="flex:1"><button data-a=memadd class=p>+</button></div>`;
+ else if(tab==='notes')b=S.notes.map(n=>`<div class=pv><input data-nt="${n.id}" value="${esc(n.title)}"><textarea rows=3 data-nb="${n.id}">${esc(n.text)}</textarea><button data-a=notedel data-id="${n.id}">${bi('ลบ','Delete')}</button></div>`).join('')+`<button data-a=noteadd class=p>${bi('โน้ตใหม่','New note')}</button>`;
+ else if(tab==='tasks')b=S.tasks.length?S.tasks.map(x=>`<div class=pv><div>${esc(x.t)}</div><div class=lim>${esc(x.st)} / ${new Date(x.id).toLocaleString()} / ${x.steps.length} ${bi('ขั้นตอน','actions')}</div><div class=row>${x.st!=='done'?`<button data-a=tres data-id="${x.id}">${bi('ทำต่อ','Resume')}</button>`:''}<button data-a=tdel data-id="${x.id}">${bi('ลบ','Delete')}</button></div></div>`).join(''):`<p class=lim>${bi('ยังไม่มีงาน','No tasks yet')}</p>`;
+ else if(tab==='tools')b=Object.entries(TOOLS).map(([k,v])=>`<div class=pv><label class=row style="color:var(--tx)"><input type=checkbox data-to="${k}" ${S.off[k]?'':'checked'} style="width:auto"><b>${k}</b>${v.sens?`<span class=tag>${bi('ถามก่อน','asks first')}</span>`:''}</label><div class=lim>${esc(v.d)}</div><div class=lim>${bi('ต้องการ','Needs')}: ${esc(v.n)}</div></div>`).join('')+ck('cf-all',S.confirmAll,bi('ถามยืนยันก่อนทุกการกระทำ','Ask before every action'));
+ else if(tab==='access')b=`<div class=pv id=perm></div><div class=row><button data-a=reqmic>${bi('ขอสิทธิ์ไมโครโฟน','Request microphone')}</button><button data-a=reqnot>${bi('ขอสิทธิ์แจ้งเตือน','Request notifications')}</button></div><p class=lim>${bi('เปิดแอป: ใช้ได้กับแอปที่ Android ให้แอปนี้มองเห็น. ปฏิทิน: เปิดแอปปฏิทินพร้อมข้อมูลกิจกรรม คุณต้องกดบันทึกเอง ไม่มีการเข้าถึงปฏิทินแบบเงียบ. ไฟล์: อ่านเฉพาะไฟล์ข้อความที่คุณแนบ ไม่แก้ไขหรือย้ายไฟล์ในเครื่อง. การตั้งค่า: เปิดได้แค่หน้าแรกของแอปตั้งค่า. พื้นหลัง: Agent ทำงานตอนเปิดแอปเท่านั้น ส่วนเตือนความจำใช้ระบบปลุกของ Android. ข้อความ: ไม่ส่งเองอัตโนมัติ การแชร์จะเปิดหน้าต่างแชร์ให้คุณเลือก','Open apps: works for apps Android lets this app see. Calendar: opens the Calendar app with the event prefilled and you tap Save; no silent calendar access. Files: only text files you attach; nothing on the device is changed or moved. Settings: only the Settings app home page opens. Background: the agent runs only while the app is open; reminders use Android alarms. Messages: nothing is sent automatically; sharing opens the share sheet for you to choose.')}</p>`;
+ modal(`<div class=row style="flex-wrap:nowrap;overflow-x:auto">${Object.keys(LB).map(k=>`<button data-a=tab data-id=${k} class="${k===tab?'on':''}">${LB[k][L()?0:1]}</button>`).join('')}</div>${b}<button data-a=close class=p>OK</button>`);
+ if(tab==='voice')loadVoices().then(v=>{const s=$('#v-sel');if(!s)return;v.forEach((x,i)=>s.insertAdjacentHTML('beforeend',`<option value=${i} ${i===S.voice.vi?'selected':''}>${esc(x.name+' ('+x.lang+')')}</option>`))});
+ if(tab==='access')accessStatus()}
+async function accessStatus(){const p=NP(),o=[[bi('แอป Android','Android app'),p?'OK':bi('เบราว์เซอร์ (เครื่องมือเครื่องใช้ไม่ได้)','Browser (device tools unavailable)')]];
+ try{if(p&&p.SpeechRecognition)o.push([bi('ไมโครโฟน','Microphone'),(await p.SpeechRecognition.checkPermissions()).speechRecognition])}catch{}
+ try{if(p&&p.LocalNotifications)o.push([bi('การแจ้งเตือน','Notifications'),(await p.LocalNotifications.checkPermissions()).display])}catch{}
+ const e=$('#perm');if(e)e.innerHTML=o.map(x=>`<div class=row><b style="flex:1">${x[0]}</b><span>${esc(x[1])}</span></div>`).join('')}
+const statTxt=p=>{const s=S.stat[p.id];return s?(s.ok?bi('เชื่อมต่อล่าสุด: สำเร็จ ','Last call: OK '):bi('เชื่อมต่อล่าสุดล้มเหลว: ','Last call failed: ')+(s.err||'')+' ')+new Date(s.ts).toLocaleTimeString():bi('ยังไม่เคยเรียก','No calls yet')};
+/* ---------- events ---------- */
+document.body.insertAdjacentHTML('beforeend','<input type=file id=fi multiple hidden accept="text/*,.md,.csv,.json,.txt,.log,.xml,.html,.yml,.yaml">');
+$('#fi').onchange=async e=>{for(const f of e.target.files){try{if(f.size>2e6||/\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|webp|zip|apk)$/i.test(f.name))throw 0;FILES.push({name:f.name,text:await f.text()})}catch{toast(f.name+': '+bi('รองรับเฉพาะไฟล์ข้อความไม่เกิน 2MB','text files up to 2 MB only'))}}e.target.value='';fcDraw()};
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,id=el.dataset.id;
+ if(a==='menu')menu();else if(a==='tab'){if(id==='persona'){persona()}else menu(id)}
+ else if(a==='agent'){S.agent=!S.agent;save();const b=$('#ag');b.textContent='Agent: '+(S.agent?'ON':'OFF');b.className=S.agent?'on':''}
+ else if(a==='attach')$('#fi').click();else if(a==='fclear'){FILES.length=0;fcDraw()}
+ else if(a==='mic'){if(vmode){vmode=false;stopSpeak();recStop&&recStop();micUI()}else vloop()}
+ else if(a==='stop'){if(task&&task.st==='running')task.cancel=true;if(pend){const r=pend.res;pend=null;r(false)}stopSpeak()}
+ else if(a==='allow'||a==='deny'){if(pend){const r=pend.res;pend=null;r(a==='allow');actDraw()}}
+ else if(a==='hideact'){task.hide=true;actDraw()}
+ else if(a==='memadd'){const v=$('#mnew').value.trim();if(v){S.mems.push({id:id_(),t:v});save();menu('memory')}}
+ else if(a==='memdel'){S.mems=S.mems.filter(m=>m.id!==id);save();menu('memory')}
+ else if(a==='noteadd'){S.notes.unshift({id:id_(),title:bi('โน้ตใหม่','New note'),text:'',ts:Date.now()});save();menu('notes')}
+ else if(a==='notedel'){S.notes=S.notes.filter(n=>n.id!==id);save();menu('notes')}
+ else if(a==='tres'){const x=S.tasks.find(q=>String(q.id)===id);if(x){closeM();$('#in').value=bi('ทำงานนี้ต่อ: ','Continue this task: ')+x.t;$('#in').focus()}}
+ else if(a==='tdel'){S.tasks=S.tasks.filter(q=>String(q.id)!==id);save();menu('tasks')}
+ else if(a==='reqmic'){const p=NP();(p&&p.SpeechRecognition?p.SpeechRecognition.requestPermissions():Promise.reject(new Error('Android app only'))).then(accessStatus).catch(x=>toast(x.message))}
+ else if(a==='reqnot'){const p=NP();(p&&p.LocalNotifications?p.LocalNotifications.requestPermissions():Promise.reject(new Error('Android app only'))).then(accessStatus).catch(x=>toast(x.message))}
+ else if(a==='vtest')speak(bi('สวัสดีค่ะ นี่คือเสียงทดสอบ','Hello, this is a voice test.'))});
+document.addEventListener('change',e=>{const d=e.target.dataset,i=e.target.id;
+ if(d.me){const m=S.mems.find(x=>x.id===d.me);if(m){m.t=e.target.value.trim()||m.t;save()}}
+ else if(d.nt){const n=S.notes.find(x=>x.id===d.nt);if(n){n.title=e.target.value;save()}}
+ else if(d.nb){const n=S.notes.find(x=>x.id===d.nb);if(n){n.text=e.target.value;save()}}
+ else if(d.to){if(e.target.checked)delete S.off[d.to];else S.off[d.to]=1;save()}
+ else if(i==='cf-all'){S.confirmAll=e.target.checked;save()}
+ else if(i==='v-speak'){S.voice.speak=e.target.checked;save()}
+ else if(i==='v-hands'){S.voice.hands=e.target.checked;if(e.target.checked)S.voice.speak=true;save()}
+ else if(i==='v-rate'){S.voice.rate=+e.target.value;$('#rv').textContent=S.voice.rate;save()}
+ else if(i==='v-sel'){S.voice.vi=+e.target.value;save()}});
+
 main();
 </script></body></html>

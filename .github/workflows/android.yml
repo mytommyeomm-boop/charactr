@@ -15,8 +15,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - run: npm install
+      - run: npm install --legacy-peer-deps
       - run: npx cap add android
+      - name: Add Android permissions
+        run: |
+          python3 - <<'PY'
+          p='android/app/src/main/AndroidManifest.xml'
+          s=open(p).read()
+          names=['RECORD_AUDIO','POST_NOTIFICATIONS','SCHEDULE_EXACT_ALARM','USE_EXACT_ALARM','QUERY_ALL_PACKAGES','VIBRATE']
+          add=''.join('    <uses-permission android:name="android.permission.%s"/>\n' % x for x in names)
+          if 'QUERY_ALL_PACKAGES' not in s:
+              s=s.replace('<application', add+'    <application', 1)
+          open(p,'w').write(s)
+          PY
       - run: npx cap sync android
       - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
