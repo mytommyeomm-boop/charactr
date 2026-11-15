@@ -1,0 +1,6 @@
+{
+  "appId": "com.charactr.app",
+  "appName": "Charactr",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}
