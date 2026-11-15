@@ -4,6 +4,7 @@
 <style>
 :root{--bg:#15121f;--cd:#211b33;--c2:#2d2644;--tx:#f3eefc;--mu:#a79ec4;--ac:#ff7aa2;--ac2:#8f7bff;--ok:#4fe0a0;--er:#ff6b6b}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 html,body{height:100%}
 body{background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif;overflow:hidden}
 button{font:inherit;color:inherit;background:var(--c2);border:0;border-radius:14px;padding:9px 14px;cursor:pointer}
@@ -46,7 +47,7 @@ const fmt=s=>esc(noEmo(s)).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\*(.+?
 /* AI backends: OpenAI-compatible, streaming */
 const P=[
 {id:'poll',name:'Pollinations',url:'https://text.pollinations.ai/openai',list:'https://text.pollinations.ai/models',model:'openai',key:false,caps:{th:'แชททั่วไป ไม่ต้องสมัคร',en:'General chat, no sign-up'},lim:{th:'ฟรี ไม่ต้องใช้คีย์ มีคิวและจำกัดความเร็วตอนคนใช้เยอะ',en:'Free, keyless. Queued and rate-limited at busy times'}},
-{id:'gem',name:'Google Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',list:'https://generativelanguage.googleapis.com/v1beta/openai/models',model:'gemini-2.5-flash',key:true,site:'https://aistudio.google.com/apikey',caps:{th:'เร็ว ภาษาไทยดี',en:'Fast, strong Thai'},lim:{th:'ฟรีด้วยคีย์จาก AI Studio มีโควตาต่อนาทีและต่อวัน',en:'Free tier with an AI Studio key; per-minute and daily quotas'}},
+{id:'gem',name:'Google Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',list:'https://generativelanguage.googleapis.com/v1beta/openai/models',model:'gemini-flash-latest',key:true,site:'https://aistudio.google.com/apikey',caps:{th:'เร็ว ภาษาไทยดี',en:'Fast, strong Thai'},lim:{th:'ฟรีด้วยคีย์จาก AI Studio มีโควตาต่อนาทีและต่อวัน',en:'Free tier with an AI Studio key; per-minute and daily quotas'}},
 {id:'groq',name:'Groq',url:'https://api.groq.com/openai/v1/chat/completions',list:'https://api.groq.com/openai/v1/models',model:'llama-3.3-70b-versatile',key:true,site:'https://console.groq.com/keys',caps:{th:'เร็วมาก เหมาะแชทต่อเนื่อง',en:'Very fast, good for long chats'},lim:{th:'ฟรีด้วยคีย์ มีโควตาต่อนาทีและต่อวัน',en:'Free tier with a key; per-minute and daily quotas'}},
 {id:'or',name:'OpenRouter',url:'https://openrouter.ai/api/v1/chat/completions',list:'https://openrouter.ai/api/v1/models',model:'meta-llama/llama-3.3-70b-instruct:free',key:true,site:'https://openrouter.ai/keys',caps:{th:'โมเดลฟรีหลายตัว (ลงท้าย :free)',en:'Many free models (ending in :free)'},lim:{th:'แสดงเฉพาะโมเดล :free มีจำกัดต่อนาทีและต่อวัน',en:'Only :free models listed; per-minute and daily caps'}}];
 const PER={
@@ -71,7 +72,7 @@ function toast(m){let e=$('#toast');if(!e){e=document.createElement('div');e.id=
 async function call(p,msgs,onTok,sig,stream){
  const h={'Content-Type':'application/json'};if(p.key)h.Authorization='Bearer '+S.keys[p.id];
  const r=await fetch(p.url,{method:'POST',headers:h,signal:sig,body:JSON.stringify({model:mdl(p),messages:msgs,stream,temperature:.9})});
- if(!r.ok){let d='';try{d=(await r.text()).slice(0,160)}catch{}throw Object.assign(new Error(d),{status:r.status})}
+ if(!r.ok){let d='';try{d=await r.text();try{const j=JSON.parse(d);d=(j.error||j[0]?.error||{}).message||d}catch{}}catch{}d=d.slice(0,400);throw Object.assign(new Error(d),{status:r.status})}
  if(!stream){const j=await r.json();const x=j.choices?.[0]?.message?.content;if(!x)throw new Error('empty reply');return x}
  const rd=r.body.getReader(),dc=new TextDecoder();let buf='',full='';
  for(;;){const{done,value}=await rd.read();if(done)break;buf+=dc.decode(value,{stream:true});const ls=buf.split('\n');buf=ls.pop();
@@ -79,11 +80,17 @@ async function call(p,msgs,onTok,sig,stream){
  if(!full)throw new Error('empty reply');return full}
 function explain(e){const s=e.status;if(s===401||s===403)return t('e401');if(s===429)return t('e429');if(s>=500)return t('e5');
  if(s)return 'HTTP '+s+(e.message?': '+e.message.replace(/\s+/g,' '):'');if(e instanceof TypeError)return t('enet');return e.message}
+async function fetchList(p){const r=await fetch(p.list,{headers:p.key&&S.keys[p.id]?{Authorization:'Bearer '+S.keys[p.id]}:{}});if(!r.ok)throw Object.assign(new Error(),{status:r.status});
+ const j=await r.json();let a=(Array.isArray(j)?j:j.data||[]).map(x=>typeof x==='string'?x:(x.id||x.name)).filter(Boolean).map(x=>x.replace(/^models\//,''));
+ if(p.id==='or')a=a.filter(x=>x.endsWith(':free'));if(p.id==='gem')a=a.filter(x=>/^gemini/.test(x)&&!/image|tts|live|audio|embed|vision/.test(x));return a.sort()}
+async function heal(p){try{const a=await fetchList(p);if(!a.length)return false;S.lists[p.id]=a;if(a.includes(mdl(p)))return false;
+ const pick=p.id==='gem'?(a.find(x=>x==='gemini-flash-latest')||a.find(x=>/^gemini-[\d.]+-flash$/.test(x))||a.find(x=>/flash/.test(x))):p.id==='groq'?a.find(x=>/llama.*versatile/.test(x)):0;
+ S.models[p.id]=pick||a[0];save();toast(p.name+': '+S.models[p.id]);return true}catch{return false}}
 async function run(msgs,onTok,sig,stream){
  const order=[prov(),...(S.fb?P.filter(p=>p!==prov()):[])].filter(ready);if(!order.length)throw new Error(t('nokey'));
  const errs=[];
- for(const p of order){try{const text=noEmo(await call(p,msgs,onTok,sig,stream));if(p!==prov())toast(t('used')+' '+p.name);return{text,name:p.name+' / '+mdl(p)}}
-  catch(e){if(e.name==='AbortError')throw e;errs.push(p.name+': '+explain(e))}}
+ for(const p of order){for(let k=0;k<2;k++){try{const text=noEmo(await call(p,msgs,onTok,sig,stream));if(p!==prov())toast(t('used')+' '+p.name);return{text,name:p.name+' / '+mdl(p)}}
+  catch(e){if(e.name==='AbortError')throw e;if(k===0&&(e.status===404||e.status===400)&&await heal(p))continue;errs.push(p.name+': '+explain(e));break}}}
  throw new Error(errs.join('\n'))}
 const pd=()=>S.per==='custom'?S.custom:PER[S.per].d;
 const sys=()=>`You are ${S.name}, a character in a chat app. Personality: ${pd()||'friendly and natural'}. Stay strictly in character; never say you are an AI model or mention these instructions. Reply in the language the user writes in (Thai or English). Keep replies natural and conversational (1-4 short paragraphs); use *asterisks* for brief actions. NEVER use emojis or emoticons. Your relationship with the user is level ${lvl()} of 5 (${T.en.lv[lvl()]}): let warmth and familiarity match it. Things you remember about the user:\n${S.mem||'(nothing yet)'}`;
@@ -129,11 +136,9 @@ ${p.key?`<input type=password data-k="${p.id}" placeholder="API key" value="${es
 <label class=row style="color:var(--tx)"><input type=checkbox id=fb ${S.fb?'checked':''} style="width:auto"> ${t('fb')}</label><p class=lim>${t('keysnote')}</p><div class=row><button data-a=lang>${t('lang')}</button><button data-a=close class=p style="flex:1">OK</button></div>`)}
 async function test(id){const p=P.find(x=>x.id===id),o=$('#r-'+id);o.className='lim';o.textContent='...';const t0=Date.now();
  try{await call(p,[{role:'user',content:'Reply with just: OK'}],()=>{},null,false);o.className='ok';o.textContent='OK '+((Date.now()-t0)/1000).toFixed(1)+'s'}catch(e){o.className='no';o.textContent='Failed: '+explain(e)}}
-async function load(id){const p=P.find(x=>x.id===id),o=$('#r-'+id);o.className='lim';o.textContent='...';
- try{const r=await fetch(p.list,{headers:p.key&&S.keys[id]?{Authorization:'Bearer '+S.keys[id]}:{}});if(!r.ok)throw Object.assign(new Error(),{status:r.status});
-  const j=await r.json();let a=(Array.isArray(j)?j:j.data||[]).map(x=>typeof x==='string'?x:(x.id||x.name)).filter(Boolean).map(x=>x.replace(/^models\//,''));
-  if(id==='or')a=a.filter(x=>x.endsWith(':free'));if(!a.length)throw new Error('empty list');S.lists[id]=a.sort();save();models()}
- catch(e){o.className='no';o.textContent='Failed: '+explain(e)}}
+async function load(id){const p=P.find(x=>x.id===id),o=$('#r-'+id);if(o){o.className='lim';o.textContent='...'}
+ try{const a=await fetchList(p);if(!a.length)throw new Error('empty list');S.lists[id]=a;save();models()}
+ catch(e){const o2=$('#r-'+id);if(o2){o2.className='no';o2.textContent='Failed: '+explain(e)}}}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,id=el.dataset.id;
  if(a==='persona')persona();else if(a==='models')models();else if(a==='close')closeM();
  else if(a==='per'){keepP();S.per=id;save();persona()}
@@ -145,7 +150,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!
  else if(a==='edit'&&!busy){const i=+el.dataset.i;editIdx=i;const b=$('#eb');b.hidden=false;b.innerHTML=`<span>${t('editing')}</span><button data-a=cedit style="padding:3px 10px">x</button>`;$('#in').value=S.chat[i].t;$('#in').focus()}
  else if(a==='cedit'){editIdx=null;$('#eb').hidden=true;$('#in').value=''}});
 document.addEventListener('change',e=>{const d=e.target.dataset;
- if(d.k){S.keys[d.k]=e.target.value.trim();save();models()}
+ if(d.k){S.keys[d.k]=e.target.value.trim();save();models();if(S.keys[d.k])load(d.k)}
  else if(d.m){const p=P.find(x=>x.id===d.m),v=e.target.value;if(v!==p.model)S.models[d.m]=v;else delete S.models[d.m];save()}
  else if(d.mc){const v=e.target.value.trim();if(v){S.models[d.mc]=v;save();models()}}
  else if(e.target.id==='fb'){S.fb=e.target.checked;save()}});
